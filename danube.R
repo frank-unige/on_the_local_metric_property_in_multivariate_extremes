@@ -6,27 +6,23 @@ library(graphicalExtremes)
 library(nloptr)
 library(igraph)
 library(matrixcalc)
+library(latex2exp)
+library(xtable)
 source("help_functions.R")
 source("loc_metr_algorithm.R")
 
-# Filter and select observations without NAs
+# Data
 
-airports=which(rowSums(apply(flights$flightCounts[,,1:16], c(3),colSums)>2000)==16&rowSums(apply(flights$flightCounts[,,1:16], c(3),rowSums)>2000)==16)
-d=length(airports)
-
-# Plot airports
-
-pdf("airports_map.pdf",width = 7,height = 4.5)
-plotFlights(names(airports),plotConnections = FALSE,map="world",clipMap = 1.3,useAirportNFlights = TRUE)
-dev.off()
+data=danube$data_clustered
+d=ncol(data)
 
 # Separating data into training and validation data
 
-training_data=na.omit(flights$delays[1:2191,airports,"arrivals"]+flights$delays[1:2191,airports,"departures"])
-validation_data=na.omit(flights$delays[2192:5601,airports,"arrivals"]+flights$delays[2192:5601,airports,"departures"])
+training_data=data[1:220,]
+validation_data=data[221:428,]
 
 #Estimate empirical variogram
-p=0.85
+p=0.9
 vario_emp=emp_vario(training_data,p=p)
 Theta_emp=Gamma2Theta(vario_emp)
 
@@ -44,7 +40,7 @@ mean(Theta2Qvec(Theta_emp)>=0)
 ### eglearn estimation ###
 ##########################
 
-rholist=seq(0, 0.2, length.out = 21)
+rholist=seq(0, 0.1, length.out = 11)
 lasso.est = eglearn(training_data,p=p,rholist=rholist)
 
 #First step estimate and HR likelihood evaluation on validation data
@@ -52,7 +48,7 @@ lasso.est = eglearn(training_data,p=p,rholist=rholist)
 Gamma1_list <- list()
 loglik_step1 <- list()
 for (i in 1:length(rholist)){
-  Gamma1_list[[i]] = complete_Gamma(vario_emp,graph=lasso.est$graph[[i]],final_tol=1e-6)
+  Gamma1_list[[i]] = complete_Gamma(vario_emp,graph=lasso.est$graph[[i]],final_tol=1e-6, N=30000)
   loglik_step1[[i]] <- loglik_HR(data=validation_data,p=p, graph = lasso.est$graph[[i]],
                                  Gamma = Gamma1_list[[i]], cens = FALSE)[1]
 }
@@ -61,12 +57,16 @@ lasso.best=which(unlist(loglik_step1)==max(unlist(loglik_step1)))
 loglik_step1[lasso.best]
 lasso.est$graph[[lasso.best]]
 
-pdf("best_graph.pdf",width = 7,height = 4.5)
-plotFlights(names(airports),graph=lasso.est$graph[[lasso.best]],map="world",clipMap = 1.3)
-dev.off()
+lm = loc_metr(Gamma1_list[[lasso.best]],lasso.est$graph[[lasso.best]])
+lm$lm
+prop_emp=1-length(lm$failed_ineq)/(lm$number_valid_ineq+length(lm$failed_ineq))
+prop_emp
+
+#pdf("best_graph.pdf",width = 7,height = 4.5)
+
+#dev.off()
 
 # First step estimates partially satisfy the local metric property, but not the EMTP2 constraints
-
 results=matrix(0,4,length(rholist))
 results[1,]=rholist
 for (i in 1:length(rholist)) {
@@ -82,6 +82,7 @@ for (i in 1:length(rholist)) {
 
 table = xtable(round(results,2))
 print(table,type = "latex")
+
 
 # For comparison: Performance of eglearn estimates wrt information criteria is lower than the best above
 Gamma1_MBIC = complete_Gamma(vario_emp,graph=lasso.est$graph_ic$mbic,final_tol=1e-6)
@@ -112,6 +113,9 @@ for (i in 1:length(rholist)){
                                  Gamma = Gamma2_list[[i]], cens = FALSE)[1]}
 }
 
+lasso.best2=which(unlist(loglik_step2)==max(unlist(loglik_step2)))
+loglik_step2[[lasso.best2]]
+
 # Plotting log-likelihoods vs. Rho
 pdf("plot_lik.pdf",width = 7,height = 4.5)
 par(cex = 1.25, cex.lab = 1.3, cex.axis = 1, cex.main = 1.5,
@@ -125,10 +129,4 @@ matplot(rholist, cbind(unlist(loglik_step1), unlist(loglik_step2)), type = "b",
 grid()
 dev.off()
 
-lasso.best2=which(unlist(loglik_step2)==max(unlist(loglik_step2)))
-loglik_step2[lasso.best2]
-lasso.est$graph[[lasso.best2]]
 
-pdf("best_graph.pdf",width = 7,height = 4.5)
-plotFlights(names(airports),graph=lasso.est$graph[[lasso.best]],map="world",clipMap = 1.3)
-dev.off()
