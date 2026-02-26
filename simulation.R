@@ -45,7 +45,7 @@ sims_args <- rep_tibble_new(param, json$other_params$nsim) %>%
 
 
 
-# split arguments between fun_args and other_sargs
+# split arguments between fun_args and other_args
 other_args_nms <- names(sims_args)[
   !(names(sims_args) %in% names(formals(eval(as.name(sim_function)))))]
 fun_args <- sims_args %>% dplyr::select(!any_of(other_args_nms))
@@ -94,8 +94,6 @@ if (length(rowid_errors) > 0){
   cat(paste0("Error occured in iteration with rowid: ", rowid_errors, "\n"))
   sink()
 }
-
-# send email
 
 # save results
 saveRDS(ll, file = file_rds)
